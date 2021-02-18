@@ -1,44 +1,53 @@
 package main
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 )
 
 func main() {
-	// fmt.Println("Hello world")
-	// Init workflow with a name, and a number for max concurrent tasks, so we
-	// don't overbook our CPU (it is recommended to set it to the number of CPU
-	// cores of your computer)
-	// wf := scipipe.NewWorkflow("hello_world", 4)
-
-	// // Initialize processes and set output file paths
-	// hello := wf.NewProc("hello", "echo 'Hello ' > {o:out}")
-	// hello.SetOut("out", "hello.txt")
-
-	// world := wf.NewProc("world", "echo $(cat {i:in}) World >> {o:out}")
-	// world.SetOut("out", "{i:in|%.txt}_world.txt")
-
-	// // Connect network
-	// world.In("in").From(hello.Out("out"))
-
-	// // Run workflow
-	// wf.Run()
-
-	// input :=
-	input, err := ioutil.ReadFile("sample.graph.json")
-	if err != nil {
-		log.Fatalln(err)
+	if len(os.Args) < 3 {
+		log.Fatalln("Missing arguments")
 	}
-	graph := ParseGraph(input)
-	// log.Println(graph)
 
-	modules, err := filepath.Abs("node_modules")
+	inputFile, err := filepath.Abs(os.Args[1])
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	wf := graph.EvaluateWorkflow("foo", modules)
-	wf.Run()
+	input, err := ioutil.ReadFile(inputFile)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	var graph Graph
+	err = json.Unmarshal(input, &graph)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	moduleDirectory, err := filepath.Abs("node_modules")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if outputDirectory, err := filepath.Abs(os.Args[2]); err != nil {
+		log.Fatalln(err)
+	} else if stat, err := os.Stat(outputDirectory); os.IsNotExist(err) {
+	} else if err != nil {
+		log.Fatalln(err)
+	} else if stat.IsDir() {
+	} else {
+		log.Fatalln("Output path must be a directory")
+	}
+
+	failures := graph.Evaluate(moduleDirectory, os.Args[2])
+
+	log.Println("got the array in main :-)", failures)
+	for _, failure := range failures {
+		log.Println(failure.name)
+	}
 }

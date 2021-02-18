@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/scipipe/scipipe"
@@ -20,41 +22,11 @@ type Node struct {
 	Outputs map[string][]ID
 }
 
-// Module returns the path to the node kind's nodejs module
-func (node *Node) Module(modules string) string {
-	return filepath.Join(modules, "@underlay", fmt.Sprintf("block-%s-runtime", node.Kind))
-}
+// MakeValidateCommand assembles the validate shell command
+func (node *Node) MakeValidateCommand(moduleDirectory string) string {
+	path := filepath.Join(ModulePath(moduleDirectory, node.Kind), "validate.js")
 
-// ProcessName uniquely identifies a node process within a given workflow
-func (node *Node) ProcessName() string { return fmt.Sprintf("node-%d", node.ID) }
-
-// StateProcessName uniquely identifies a state node process within a given workflow
-func (node *Node) StateProcessName() string { return fmt.Sprintf("node-%d-state", node.ID) }
-
-// StateInPort identifies the node's state in port
-func (node *Node) StateInPort() string { return fmt.Sprintf("%d-state-in", node.ID) }
-
-// StateOutPort identifieds the node's state out port
-func (node *Node) StateOutPort() string { return fmt.Sprintf("%d-state-out", node.ID) }
-
-// StateOutputPath is the state file path
-func (node *Node) StateOutputPath() string { return fmt.Sprintf("node-%d.state.json", node.ID) }
-
-// SchemaOutputPath is the output schema file path
-func (node *Node) SchemaOutputPath(output string) string {
-	return fmt.Sprintf("node-%d-%s.schema", node.ID, output)
-}
-
-// InstanceOutputPath is the output instance file path
-func (node *Node) InstanceOutputPath(output string) string {
-	return fmt.Sprintf("node-%d-%s.instance", node.ID, output)
-}
-
-// ValidateCommand assembles the validate shell command
-func (node *Node) ValidateCommand(modules string) string {
-	path := filepath.Join(node.Module(modules), "lib", "validate.js")
-
-	state := fmt.Sprintf("--state {i:%s}", node.StateInPort())
+	state := fmt.Sprintf("--state {i:%s}", StateInPort(node.ID))
 
 	inputSchemas := "--input-schemas"
 	for input := range node.Inputs {
@@ -74,11 +46,11 @@ func (node *Node) ValidateCommand(modules string) string {
 	)
 }
 
-// EvaluateCommand assembles the evaluate shell command
-func (node *Node) EvaluateCommand(workflow string, modules string) string {
-	path := filepath.Join(node.Module(modules), "lib", "evaluate.js")
+// MakeEvaluateCommand assembles the evaluate shell command
+func (node *Node) MakeEvaluateCommand(moduleDirectory string) string {
+	path := filepath.Join(ModulePath(moduleDirectory, node.Kind), "evaluate.js")
 
-	state := fmt.Sprintf("--state {i:%s}", node.StateInPort())
+	state := fmt.Sprintf("--state {i:%s}", StateInPort(node.ID))
 
 	inputSchemas := "--input-schemas"
 	inputInstances := "--input-instances"
@@ -120,41 +92,44 @@ type Graph struct {
 	Edges []*Edge
 }
 
-// ParseGraph parses a graph out of serialized JSON
-func ParseGraph(input []byte) *Graph {
-	var graph Graph
-	json.Unmarshal(input, &graph)
-	return &graph
-}
+// Validate creates and runs a validate workflow
+func (graph *Graph) Validate(
+	moduleDirectory string, outputDirectory string,
+) []*Failure {
+	failures := make(chan *Failure)
+	buffer := make(chan []*Failure)
+	go bufferFailures(failures, buffer)
 
-// ValidateWorkflow creates a validate workflow
-func (graph *Graph) ValidateWorkflow(workflow string, modules string) *scipipe.Workflow {
-	wf := scipipe.NewWorkflow(workflow, 4)
+	wf := scipipe.NewWorkflow("validate", 4)
 
 	processes := map[ID]*scipipe.Process{}
 	for _, node := range graph.Nodes {
 		validateProc := wf.NewProc(
-			node.ProcessName(),
-			node.ValidateCommand(modules),
+			ProcessName(node.ID),
+			node.MakeValidateCommand(moduleDirectory),
 		)
+
+		validateProc.CustomExecute = func(task *scipipe.Task) { executeTask(task, failures) }
+
 		for output := range node.Outputs {
 			schemaOutPort := SchemaOutPort(node.ID, output)
-			schemaPath := node.SchemaOutputPath(output)
+			schemaPath := SchemaOutputPath(outputDirectory, node.ID, output)
 			validateProc.SetOut(schemaOutPort, schemaPath)
 		}
 		processes[node.ID] = validateProc
 
-		stateOutPort := node.StateOutPort()
+		stateOutPort := StateOutPort(node.ID)
 		stateProc := wf.NewProc(
-			node.StateProcessName(),
+			StateProcessName(node.ID),
 			fmt.Sprintf("{o:%s}", stateOutPort),
 		)
-		statePath := node.StateOutputPath()
+		statePath := StateOutputPath(outputDirectory, node.ID)
+
 		stateProc.SetOut(stateOutPort, statePath)
 		stateValue := node.State
 		stateProc.CustomExecute = func(task *scipipe.Task) { task.OutIP(stateOutPort).Write(stateValue) }
 
-		stateInPort := node.StateInPort()
+		stateInPort := StateInPort(node.ID)
 		validateProc.In(stateInPort).From(stateProc.Out(stateOutPort))
 	}
 
@@ -166,41 +141,51 @@ func (graph *Graph) ValidateWorkflow(workflow string, modules string) *scipipe.W
 		target.In(schemaInPort).From(source.Out(schemaOutPort))
 	}
 
-	return wf
+	wf.Run()
+	close(failures)
+	return <-buffer
 }
 
-// EvaluateWorkflow creates an evaluate workflow
-func (graph *Graph) EvaluateWorkflow(workflow string, modules string) *scipipe.Workflow {
-	wf := scipipe.NewWorkflow(workflow, 4)
+// Evaluate creates and runs an evaluate workflow
+func (graph *Graph) Evaluate(
+	moduleDirectory string, outputDirectory string,
+) []*Failure {
+	failures := make(chan *Failure)
+	buffer := make(chan []*Failure)
+	go bufferFailures(failures, buffer)
+
+	wf := scipipe.NewWorkflow("evaluate", 4)
 
 	processes := map[ID]*scipipe.Process{}
 	for _, node := range graph.Nodes {
 		evaluateProc := wf.NewProc(
-			node.ProcessName(),
-			node.EvaluateCommand(workflow, modules),
+			ProcessName(node.ID),
+			node.MakeEvaluateCommand(moduleDirectory),
 		)
+
+		evaluateProc.CustomExecute = func(task *scipipe.Task) { executeTask(task, failures) }
 
 		for output := range node.Outputs {
 			schemaOutPort := SchemaOutPort(node.ID, output)
-			schemaPath := node.SchemaOutputPath(output)
+			schemaPath := SchemaOutputPath(outputDirectory, node.ID, output)
 			evaluateProc.SetOut(schemaOutPort, schemaPath)
 			instanceOutPort := InstanceOutPort(node.ID, output)
-			instancePath := node.InstanceOutputPath(output)
+			instancePath := InstanceOutputPath(outputDirectory, node.ID, output)
 			evaluateProc.SetOut(instanceOutPort, instancePath)
 		}
 		processes[node.ID] = evaluateProc
 
-		stateOutPort := node.StateOutPort()
+		stateOutPort := StateOutPort(node.ID)
 		stateProc := wf.NewProc(
-			node.StateProcessName(),
+			StateProcessName(node.ID),
 			fmt.Sprintf("{o:%s}", stateOutPort),
 		)
-		statePath := node.StateOutputPath()
+		statePath := StateOutputPath(outputDirectory, node.ID)
 		stateProc.SetOut(stateOutPort, statePath)
 		stateValue := node.State
 		stateProc.CustomExecute = func(task *scipipe.Task) { task.OutIP(stateOutPort).Write(stateValue) }
 
-		stateInPort := node.StateInPort()
+		stateInPort := StateInPort(node.ID)
 		evaluateProc.In(stateInPort).From(stateProc.Out(stateOutPort))
 	}
 
@@ -215,25 +200,48 @@ func (graph *Graph) EvaluateWorkflow(workflow string, modules string) *scipipe.W
 		target.In(instanceInPort).From(source.Out(instanceOutPort))
 	}
 
-	return wf
+	wf.Run()
+	close(failures)
+	return <-buffer
 }
 
-// SchemaInPort identifies a schema input port
-func SchemaInPort(id ID, input string) string {
-	return fmt.Sprintf("%d-%s.input.schema", id, input)
+// Failure represents a failed command
+type Failure struct {
+	err    error
+	name   string
+	output string
 }
 
-// InstanceInPort identifies an instance input port
-func InstanceInPort(id ID, input string) string {
-	return fmt.Sprintf("%d-%s.input.instance", id, input)
+func executeTask(task *scipipe.Task, failures chan *Failure) {
+	// If any of the input files don't exist, just silently continue
+	for input, inputIP := range task.InIPs {
+		if _, err := os.Stat(inputIP.Path()); os.IsNotExist(err) {
+			scipipe.LogAuditf(task.Name, "Skipping: missing input %s", input)
+			return
+		} else if err != nil {
+			scipipe.Fail(err.Error())
+		}
+	}
+
+	cmd := fmt.Sprintf("cd %s && %s && cd ..", task.TempDir(), task.Command)
+	out, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+	switch err := err.(type) {
+	case nil:
+	case *exec.ExitError:
+		scipipe.Error.Printf("Command failed: %s\n\n%s\n", err.Error(), string(out))
+		failures <- &Failure{err, task.Name, string(out)}
+	default:
+		scipipe.Failf(
+			"Could not run command.\nCommand: %s\nOutput: \n%s\nError: %s\n",
+			task.Command, string(out), err.Error(),
+		)
+	}
 }
 
-// SchemaOutPort identifies a schema output port
-func SchemaOutPort(id ID, output string) string {
-	return fmt.Sprintf("%d-%s.output.schema", id, output)
-}
-
-// InstanceOutPort identifies an instance output port
-func InstanceOutPort(id ID, output string) string {
-	return fmt.Sprintf("%d-%s.output.instance", id, output)
+func bufferFailures(failures chan *Failure, buffer chan []*Failure) {
+	b := []*Failure{}
+	for f := range failures {
+		b = append(b, f)
+	}
+	buffer <- b
 }
