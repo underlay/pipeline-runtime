@@ -1,0 +1,17 @@
+{
+	"include": ["src"],
+	"exclude": ["test"],
+	"compilerOptions": {
+		"rootDir": "./src",
+		"outDir": "./lib",
+		"composite": true,
+		"strict": true,
+		"module": "ESNext",
+		"target": "ES2020",
+		"declaration": true,
+		"alwaysStrict": true,
+		"jsx": "react",
+		"moduleResolution": "node",
+		"esModuleInterop": true
+	}
+}

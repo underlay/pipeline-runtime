@@ -1,29 +1,17 @@
 # pipeline-runtime
 
-## Build
+The [src/index.ts](./src/index.ts) script starts a kafka consumer on topic `pipeline-evaluate` that receives pipeline graphs and evaluates the blocks in topological order.
 
-```zsh
-% go get -trimpath github.com/ipfs/go-ipfs/cmd/ipfs@v0.8.0
-% go build -trimpath -buildmode=plugin -o pipeline-runtime.so .
-% chmod +x pipeline-runtime.so
-% cp pipeline-runtime.so ~/.ipfs/plugins/.
+The worker emits JSON events on topic `pipeline-evaluate-event`. Each event has a `.event` property that is one of `start`, `result`, `failure`, or `success`. Every pipeline execution begins with a `start` event and ends with _either_ a `failure` or `success` event, with zero or more `result` events in-between.
+
+![](./event-fsm.svg)
+
+The `failure` event carries a `ValidateError` object, which is one of these types:
+
+```typescript
+type ValidateError = GraphError | NodeError | EdgeError
+
+type GraphError = { type: "validate/graph"; message: string }
+type NodeError = { type: "validate/node"; id: string; message: string }
+type EdgeError = { type: "validate/edge"; id: string; message: string }
 ```
-
-## API
-
-The pipeline runtime has three primary internal API endpoints
-
-### `/api/v0/evaluate`
-
-- `POST` a JSON graph to this route. A successful `POST` returns status code `200`.
-
-### `/api/v0/evaluate`
-
-- `POST` a JSON graph to this route. A successful `POST` returns status code `200`.
-
-### `/api/v0/collection`
-
-This route takes two required query parameters `host` and `id`. `host` is a multiaddr of a remote collection server, and `id` is a URI identifying a collection hosted on that server.
-
-- `GET /api/v0/collection?host=/foo/bar&id=http://example.com/some-collection` fetches the specified collection as a .tar.gz archive. A successful `GET` returns status code `200`.
-- `POST /api/v0/collection?host=/foo/bar&id=http://example.com/some-collection` takes the .tar.gz archive in the request body and publishes it to the specified collection endpoint. A successful `POST` returns a status code `204`.

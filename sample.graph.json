@@ -1,0 +1,42 @@
+{
+	"nodes": {
+		"n1": {
+			"kind": "csv-import",
+			"inputs": {},
+			"outputs": { "output": ["e1"] },
+			"state": {
+				"file": "http://localhost:8000/test.csv",
+				"key": "http://example.com/Thing",
+				"header": false,
+				"columns": [
+					{
+						"key": "http://example.com/foo",
+						"nullValue": null,
+						"type": { "kind": "uri" }
+					},
+					null,
+					{
+						"key": "http://example.com/bar",
+						"nullValue": null,
+						"type": {
+							"kind": "literal",
+							"datatype": "http://www.w3.org/2001/XMLSchema#integer"
+						}
+					}
+				]
+			}
+		},
+		"n2": {
+			"kind": "collection-export",
+			"inputs": { "input": "e1" },
+			"outputs": {},
+			"state": { "host": "fjdksl", "id": "http://localhost:8086" }
+		}
+	},
+	"edges": {
+		"e1": {
+			"source": { "id": "n1", "output": "output" },
+			"target": { "id": "n2", "input": "input" }
+		}
+	}
+}
