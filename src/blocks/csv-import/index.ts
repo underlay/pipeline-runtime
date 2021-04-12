@@ -1,6 +1,5 @@
 import { Buffer } from "buffer"
 import Papa from "papaparse"
-import fetch from "node-fetch"
 
 import { Instance, Schema, signalInvalidType, zip } from "@underlay/apg"
 
@@ -9,13 +8,11 @@ import { ul } from "@underlay/namespaces"
 
 import { encodeLiteral, decodeLiteral } from "@underlay/apg-format-binary"
 
-import block, {
-	State,
-	Inputs,
-	Outputs,
-} from "@underlay/pipeline/lib/blocks/csv-import/index.js"
+import block, { State, Inputs, Outputs } from "@underlay/pipeline/csv-import"
 
 import { Evaluate } from "../../types.js"
+
+import { resolveURI } from "../../utils.js"
 
 const unit = Instance.unit(Schema.unit())
 
@@ -41,9 +38,10 @@ const evaluate: Evaluate<State, Inputs, Outputs> = async (state, {}) => {
 		output: { schema },
 	} = await block.validate(state, {})
 	return new Promise(async (resolve, reject) => {
-		const { file } = state
-		if (file === null) {
+		if (state.uri === null) {
 			throw new Error("No file")
+		} else {
+			const {} = new URL(state.key)
 		}
 
 		const product = schema[state.key]
@@ -54,7 +52,7 @@ const evaluate: Evaluate<State, Inputs, Outputs> = async (state, {}) => {
 		const values: Instance.Value<Outputs["output"][string]>[] = []
 		let skip = state.header
 
-		const config = { skipEmptyLines: true, header: false }
+		const config = { skipEmptyLines: false, header: false }
 		const stream = Papa.parse(Papa.NODE_STREAM_INPUT, config)
 
 		stream.on("data", (row: string[]) => {
@@ -107,7 +105,7 @@ const evaluate: Evaluate<State, Inputs, Outputs> = async (state, {}) => {
 
 		stream.on("error", (error) => reject(error))
 
-		fetch(file).then((res) => res.body.pipe(stream))
+		resolveURI(state.uri).then((res) => res.pipe(stream))
 	})
 }
 

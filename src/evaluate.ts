@@ -1,12 +1,6 @@
-import { readFileSync, writeFileSync } from "fs"
-import { resolve } from "path"
+import { isLeft, left, right } from "fp-ts/lib/Either.js"
 
-import { Schema, Instance, validateInstance } from "@underlay/apg"
-import { encode, decode } from "@underlay/apg-format-binary"
-import schemaSchema, {
-	SchemaSchema,
-	fromSchema,
-} from "@underlay/apg-schema-schema"
+import { Schema, validateInstance } from "@underlay/apg"
 
 import {
 	Graph,
@@ -18,29 +12,25 @@ import {
 	Schemas,
 	makeEdgeError,
 	domainEqual,
-} from "@underlay/pipeline"
-
-import {
-	EvaluateEventResult,
-	EvaluateEventFailure,
-	EvaluateEventSuccess,
+	makeStartEvent,
 	makeFailureEvent,
 	makeResultEvent,
 	makeSuccessEvent,
-	Evaluate,
-	Context,
-} from "./types.js"
+	EvaluateEvent,
+} from "@underlay/pipeline"
+
+import { Evaluate, Context, EvaluateInput, Source } from "./types.js"
 
 import { runtimes } from "./blocks/index.js"
+
+import { getInstanceURI, getOutput, getSchemaURI, putOutput } from "./utils.js"
 
 export default async function* evaluate(
 	context: Context,
 	graph: Graph
-): AsyncGenerator<
-	EvaluateEventResult | EvaluateEventFailure | EvaluateEventSuccess,
-	void,
-	undefined
-> {
+): AsyncGenerator<EvaluateEvent, void, undefined> {
+	yield makeStartEvent()
+
 	const order = sortGraph(graph)
 	if (order === null) {
 		const error = makeGraphError("Cycle detected")
@@ -70,115 +60,70 @@ export default async function* evaluate(
 			return yield makeFailureEvent(error)
 		}
 
-		const inputSchemas: Record<string, Schema.Schema> = {}
-		for (const [input, edgeId] of Object.entries(node.inputs)) {
-			inputSchemas[input] = schemas[edgeId]
-		}
-
+		const inputs: Record<string, EvaluateInput<Schema.Schema>> = {}
 		for (const [input, codec] of Object.entries(block.inputs)) {
 			const edgeId = node.inputs[input]
-			if (!codec.is(inputSchemas[input])) {
+			const schema = schemas[edgeId]
+			if (!codec.is(schema)) {
 				const error = makeEdgeError(edgeId, "Input failed validation")
 				return yield makeFailureEvent(error)
 			}
-		}
 
-		// This is probably the most likely part of evaluation to fail,
-		// adding some kind of error handling here would be smart
-		const inputs = readInputInstances(context, graph, nodeId, inputSchemas)
+			const { source } = graph.edges[edgeId]
+			inputs[input] = getInput(context, source, schema)
+		}
 
 		// TS doesn't know that node.kind and node.state are coordinated,
 		// or else this would typecheck without coersion
 		const evaluate = runtimes[node.kind] as Evaluate<any, Schemas, Schemas>
 
-		const event = await evaluate(node.state, inputs, context)
-			.then((result) => {
-				for (const [output, codec] of Object.entries(block.outputs)) {
-					const { schema, instance } = result[output]
-					if (!codec.is(schema)) {
-						const message = `Node produced an invalid schema for output ${output}`
-						const error = makeNodeError(nodeId, message)
-						return makeFailureEvent(error)
-					} else if (!validateInstance(schema, instance)) {
-						const message = `Node produced an invalid instance for output ${output}`
-						const error = makeNodeError(nodeId, message)
-						return makeFailureEvent(error)
-					} else {
-						for (const edgeId of node.outputs[output]) {
-							schemas[edgeId] = schema
-						}
-						writeSchema(context, { id: nodeId, output }, schema)
-						writeInstance(context, { id: nodeId, output }, schema, instance)
-					}
-				}
-				return makeResultEvent(nodeId)
-			})
-			.catch((err) => {
-				const error = makeNodeError(nodeId, err.toString())
-				return makeFailureEvent(error)
-			})
+		const result = await evaluate(node.state, inputs, context).then(
+			(result) => right(result),
+			(err) => left(makeNodeError(nodeId, err.toString()))
+		)
 
-		if (event.event === "failure") {
-			return yield event
-		} else {
-			yield event
+		if (isLeft(result)) {
+			return yield makeFailureEvent(result.left)
 		}
+
+		for (const [output, codec] of Object.entries(block.outputs)) {
+			const { schema, instance } = result.right[output]
+
+			if (!codec.is(schema)) {
+				const message = `Node produced an invalid schema for output ${output}`
+				const error = makeNodeError(nodeId, message)
+				return yield makeFailureEvent(error)
+			}
+
+			if (!validateInstance(schema, instance)) {
+				const message = `Node produced an invalid instance for output ${output}`
+				const error = makeNodeError(nodeId, message)
+				return yield makeFailureEvent(error)
+			}
+
+			for (const edgeId of node.outputs[output]) {
+				schemas[edgeId] = schema
+			}
+
+			await putOutput(context, { id: nodeId, output }, schema, instance)
+		}
+
+		yield makeResultEvent(nodeId)
 	}
 
 	return yield makeSuccessEvent()
 }
 
-const getSchemaPath = (
-	{ directory }: Context,
-	source: { id: string; output: string }
-) => resolve(directory, `${source.id}.${source.output}.schema`)
-
-const writeSchema = (
+function getInput<S extends Schema.Schema>(
 	context: Context,
-	source: { id: string; output: string },
-	schema: Schema.Schema
-) =>
-	writeFileSync(
-		getSchemaPath(context, source),
-		encode<SchemaSchema>(schemaSchema, fromSchema(schema))
-	)
-
-const getInstancePath = (
-	{ directory }: Context,
-	source: { id: string; output: string }
-) => resolve(directory, `${source.id}.${source.output}.instance`)
-
-const readInstance = <S extends Schema.Schema>(
-	context: Context,
-	source: { id: string; output: string },
+	source: Source,
 	schema: S
-): Instance.Instance<S> =>
-	decode<S>(schema, readFileSync(getInstancePath(context, source)))
-
-const writeInstance = <S extends Schema.Schema>(
-	context: Context,
-	source: { id: string; output: string },
-	schema: S,
-	instance: Instance.Instance<S>
-) =>
-	writeFileSync(getInstancePath(context, source), encode<S>(schema, instance))
-
-const readInputInstances = <Inputs extends Schemas>(
-	context: Context,
-	graph: Graph,
-	id: string,
-	inputSchemas: Inputs
-) =>
-	Object.fromEntries(
-		Object.entries(inputSchemas).map(([input, schema]) => {
-			const edgeId = graph.nodes[id].inputs[input]
-			const { source } = graph.edges[edgeId]
-			const instance = readInstance(context, source, schema)
-			return [input, { schema, instance }]
-		})
-	) as {
-		[Input in keyof Inputs]: {
-			schema: Inputs[Input]
-			instance: Instance.Instance<Inputs[Input]>
-		}
+): EvaluateInput<S> {
+	return {
+		schemaURI: getSchemaURI(context, source),
+		instanceURI: getInstanceURI(context, source),
+		source,
+		schema,
+		getInstance: () => getOutput(context, source, schema),
 	}
+}

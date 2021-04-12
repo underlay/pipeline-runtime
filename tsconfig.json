@@ -1,5 +1,5 @@
 {
-	"include": ["src"],
+	"include": ["src", "index.ts"],
 	"exclude": ["test"],
 	"compilerOptions": {
 		"rootDir": "./src",
@@ -12,6 +12,9 @@
 		"alwaysStrict": true,
 		"jsx": "react",
 		"moduleResolution": "node",
-		"esModuleInterop": true
+		"esModuleInterop": true,
+		"paths": {
+			"@underlay/pipeline/*": ["./node_modules/@underlay/pipeline/lib/blocks/*"]
+		}
 	}
 }

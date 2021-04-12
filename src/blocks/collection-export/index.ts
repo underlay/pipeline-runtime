@@ -1,55 +1,44 @@
 import { createHash } from "crypto"
 
-import tar from "tar-stream"
 import fetch from "node-fetch"
 import StatusCodes from "http-status-codes"
 
 import { encode } from "@underlay/apg-format-binary"
 import schemaSchema, { fromSchema } from "@underlay/apg-schema-schema"
 
-import {
+import type {
 	State,
 	Inputs,
 	Outputs,
-} from "@underlay/pipeline/lib/blocks/collection-export/index.js"
+} from "@underlay/pipeline/collection-export"
 
-import { Evaluate } from "../../types.js"
+import type { Evaluate } from "../../types.js"
 
 const evaluate: Evaluate<State, Inputs, Outputs> = async (
-	{ etag, url, readme },
-	{ input: { schema, instance } },
-	{ key }
+	{ etag, id, readme },
+	{ input },
+	{ host, token, key }
 ) => {
-	if (url === null || readme === null) {
+	if (id === null || readme === null) {
 		throw new Error("Invalid state")
 	}
 
-	const pack = tar.pack()
+	const url = `http://${host}/api/collection/${id}?key=${key}&token=${token}`
 
-	pack.entry({ name: "README.md" }, readme)
-	pack.entry({ name: "index.schema" }, encode(schemaSchema, fromSchema(schema)))
-
-	const buffer = encode(schema, instance)
-
-	const hash = createHash("sha256")
-	hash.update(buffer)
-
-	const name = `instances/${hash.digest("hex")}`
-
-	pack.entry({ name }, buffer, (err) => pack.finalize())
-
-	const headers: HeadersInit = { "Content-Type": "application/x-tar" }
-	if (etag !== null) {
-		headers["If-Match"] = `"${etag}"`
+	const headers: HeadersInit = {
+		"content-type": "text/markdown",
+		"x-collection-schema": input.schemaURI,
+		"x-collection-instance": input.instanceURI,
 	}
 
-	const res = await fetch(`${url}?key=${key}`, {
-		method: "POST",
-		headers,
-		body: pack,
-	})
+	// // TODO: Uncomment this after etags are actually implemented
+	// if (etag !== null) {
+	// 	headers["if-match"] = `"${etag}"`
+	// }
 
-	if (res.status === StatusCodes.CREATED) {
+	const res = await fetch(url, { method: "POST", headers, body: readme })
+
+	if (res.ok) {
 		return {}
 	} else {
 		throw new Error(

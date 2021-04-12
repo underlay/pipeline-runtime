@@ -1,65 +1,50 @@
-import { mkdirSync, rmdirSync } from "fs"
-import { tmpdir } from "os"
 import { resolve } from "path"
+import { mkdirSync, rmdirSync } from "fs"
 
-import { Kafka } from "kafkajs"
+import * as t from "io-ts"
 
-import { Graph, makeGraphError } from "@underlay/pipeline"
+import { isLeft } from "fp-ts/lib/Either.js"
 
-import { EvaluateEvent, makeFailureEvent } from "./types.js"
+import {
+	Graph,
+	makeGraphError,
+	EvaluateEvent,
+	makeFailureEvent,
+	makeStartEvent,
+} from "@underlay/pipeline"
 
 import evaluate from "./evaluate.js"
 
-const rootDirectory = resolve(tmpdir())
-console.log("root directory", rootDirectory)
+const host = process.env.COLLECTION_SERVER_HOST!
 
-const kafka = new Kafka({ brokers: ["localhost:9092"] })
+try {
+	new URL(host)
+} catch {
+	throw new Error("Invalid COLLECTION_SERVER_HOST environment variable")
+}
 
-const producer = kafka.producer()
-const consumer = kafka.consumer({ groupId: "pipeline-evaluate-runtime" })
+const evaluateEvent = t.type({ key: t.string, token: t.string, graph: Graph })
 
-const evaluateTopic = "pipeline-evaluate"
-const evaluateEventTopic = "pipeline-evaluate-event"
+const rootDirectory = resolve()
 
-await producer.connect()
-await consumer.connect()
-await consumer.subscribe({ topic: evaluateTopic })
+export async function handler(event: any, {}: {}): Promise<EvaluateEvent[]> {
+	const result = evaluateEvent.decode(event)
+	if (isLeft(result)) {
+		const error = makeGraphError("Invalid graph value")
+		return [makeStartEvent(), makeFailureEvent(error)]
+	}
 
-await consumer.run({
-	eachMessage: async ({ topic, partition, message }) => {
-		if (topic === evaluateTopic) {
-			const key = message.key.toString()
-			console.log("message key", key)
+	const { key, token, graph } = result.right
 
-			if (message.value === null) {
-				const error = makeGraphError("No message value")
-				return sendResult(key, makeFailureEvent(error))
-			}
+	const directory = resolve(rootDirectory, key)
+	mkdirSync(directory)
 
-			const graph = JSON.parse(message.value.toString("utf-8"))
-			if (!Graph.is(graph)) {
-				const error = makeGraphError("Invalid graph value")
-				return sendResult(key, makeFailureEvent(error))
-			}
+	const events: EvaluateEvent[] = []
+	const context = { host, key, token, directory }
+	for await (const event of evaluate(context, graph)) {
+		events.push(event)
+	}
 
-			const directory = resolve(rootDirectory, key)
-			mkdirSync(directory)
-
-			console.log("job directory", directory)
-
-			const context = { key, directory }
-			for await (const event of evaluate(context, graph)) {
-				await sendResult(key, event)
-			}
-
-			// rmdirSync(directory)
-		}
-	},
-})
-
-async function sendResult(key: string, result: EvaluateEvent) {
-	await producer.send({
-		topic: evaluateEventTopic,
-		messages: [{ key, value: JSON.stringify(result) }],
-	})
+	rmdirSync(directory, { recursive: true })
+	return events
 }
