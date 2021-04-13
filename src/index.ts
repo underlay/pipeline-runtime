@@ -15,15 +15,12 @@ import {
 
 import evaluate from "./evaluate.js"
 
-const host = process.env.COLLECTION_SERVER_HOST!
-
-try {
-	new URL(host)
-} catch {
-	throw new Error("Invalid COLLECTION_SERVER_HOST environment variable")
-}
-
-const evaluateEvent = t.type({ key: t.string, token: t.string, graph: Graph })
+const evaluateEvent = t.type({
+	host: t.string,
+	key: t.string,
+	token: t.string,
+	graph: Graph,
+})
 
 const rootDirectory = resolve()
 
@@ -34,7 +31,7 @@ export async function handler(event: any, {}: {}): Promise<EvaluateEvent[]> {
 		return [makeStartEvent(), makeFailureEvent(error)]
 	}
 
-	const { key, token, graph } = result.right
+	const { host, key, token, graph } = result.right
 
 	const directory = resolve(rootDirectory, key)
 	mkdirSync(directory)
