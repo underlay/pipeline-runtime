@@ -1,16 +1,11 @@
 {
 	"name": "@underlay/pipeline-runtime",
-	"version": "0.2.1",
-	"type": "module",
+	"version": "0.2.2",
 	"description": "",
-	"main": "lib/index.js",
-	"types": "lib/index.d.ts",
-	"files": [
-		"lib"
-	],
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
-		"zip": "zip -r pipeline-runtime.zip lib node_modules package.json package-lock.json"
+		"build": "webpack --mode production",
+		"zip": "zip pipeline-runtime.zip dist/index.js"
 	},
 	"repository": {
 		"type": "git",
@@ -23,12 +18,18 @@
 	},
 	"homepage": "https://github.com/underlay/pipeline-runtime#readme",
 	"devDependencies": {
+		"@babel/core": "^7.13.15",
 		"@types/node-fetch": "^2.5.10",
 		"@types/papaparse": "^5.2.5",
-		"@underlay/apg": "^1.2.5",
+		"@underlay/apg": "^1.2.6",
 		"dotenv": "^8.2.0",
-		"fp-ts": "^2.9.5",
-		"io-ts": "^2.2.16"
+		"fp-ts": "^2.10.0",
+		"io-ts": "^2.2.16",
+		"node-inspect-extracted": "^1.0.5",
+		"ts-loader": "^8.1.0",
+		"typescript": "^4.2.4",
+		"webpack": "^5.33.2",
+		"webpack-cli": "^4.6.0"
 	},
 	"peerDependencies": {
 		"@underlay/apg": "^1.2.5",
@@ -37,9 +38,9 @@
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.12.0",
-		"@underlay/apg-codec-table": "^1.2.5",
-		"@underlay/apg-format-binary": "^1.2.5",
-		"@underlay/apg-schema-schema": "^1.2.5",
+		"@underlay/apg-codec-table": "^1.2.6",
+		"@underlay/apg-format-binary": "^1.2.6",
+		"@underlay/apg-schema-schema": "^1.2.6",
 		"@underlay/pipeline": "0.0.4",
 		"http-status-codes": "^2.1.4",
 		"node-fetch": "^2.6.1",

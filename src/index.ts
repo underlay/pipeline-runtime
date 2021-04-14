@@ -1,6 +1,3 @@
-import { resolve } from "path"
-import { mkdirSync, rmdirSync } from "fs"
-
 import * as t from "io-ts"
 
 import { isLeft } from "fp-ts/lib/Either.js"
@@ -13,7 +10,7 @@ import {
 	makeStartEvent,
 } from "@underlay/pipeline"
 
-import evaluate from "./evaluate.js"
+import evaluate from "./evaluate"
 
 const evaluateEvent = t.type({
 	host: t.string,
@@ -21,8 +18,6 @@ const evaluateEvent = t.type({
 	token: t.string,
 	graph: Graph,
 })
-
-const rootDirectory = resolve()
 
 export async function handler(event: any, {}: {}): Promise<EvaluateEvent[]> {
 	const result = evaluateEvent.decode(event)
@@ -33,15 +28,11 @@ export async function handler(event: any, {}: {}): Promise<EvaluateEvent[]> {
 
 	const { host, key, token, graph } = result.right
 
-	const directory = resolve(rootDirectory, key)
-	mkdirSync(directory)
-
 	const events: EvaluateEvent[] = []
-	const context = { host, key, token, directory }
+	const context = { host, key, token }
 	for await (const event of evaluate(context, graph)) {
 		events.push(event)
 	}
 
-	rmdirSync(directory, { recursive: true })
 	return events
 }

@@ -15,3 +15,12 @@ type GraphError = { type: "validate/graph"; message: string }
 type NodeError = { type: "validate/node"; id: string; message: string }
 type EdgeError = { type: "validate/edge"; id: string; message: string }
 ```
+
+## Deploy
+
+```
+npm run build
+npm run zip
+```
+
+Then upload `pipeline-runtime.zip` to lambda.

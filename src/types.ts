@@ -6,7 +6,6 @@ export interface Context {
 	host: string
 	token: string
 	key: string
-	directory: string
 }
 
 export type Source = { id: string; output: string }
@@ -14,7 +13,7 @@ export type Source = { id: string; output: string }
 export type EvaluateInput<S extends Schema.Schema> = {
 	source: Source
 	schema: S
-	getInstance: () => Promise<Instance.Instance<S>>
+	instance: Instance.Instance<S>
 	schemaURI: string
 	instanceURI: string
 }

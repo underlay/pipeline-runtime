@@ -1,6 +1,6 @@
 import { isLeft, left, right } from "fp-ts/lib/Either.js"
 
-import { Schema, validateInstance } from "@underlay/apg"
+import { Instance, Schema, validateInstance } from "@underlay/apg"
 
 import {
 	Graph,
@@ -19,11 +19,11 @@ import {
 	EvaluateEvent,
 } from "@underlay/pipeline"
 
-import { Evaluate, Context, EvaluateInput, Source } from "./types.js"
+import type { Evaluate, Context, EvaluateInput, Source } from "./types"
 
-import { runtimes } from "./blocks/index.js"
+import { runtimes } from "./blocks"
 
-import { getInstanceURI, getOutput, getSchemaURI, putOutput } from "./utils.js"
+import { getInstanceURI, getSchemaURI, putOutput } from "./utils"
 
 export default async function* evaluate(
 	context: Context,
@@ -38,6 +38,7 @@ export default async function* evaluate(
 	}
 
 	const schemas: Record<string, Schema.Schema> = {}
+	const instances: Record<string, Instance.Instance> = {}
 
 	for (const nodeId of order) {
 		const node = graph.nodes[nodeId]
@@ -64,23 +65,23 @@ export default async function* evaluate(
 		for (const [input, codec] of Object.entries(block.inputs)) {
 			const edgeId = node.inputs[input]
 			const schema = schemas[edgeId]
+			const instance = instances[edgeId]
 			if (!codec.is(schema)) {
 				const error = makeEdgeError(edgeId, "Input failed validation")
 				return yield makeFailureEvent(error)
 			}
 
 			const { source } = graph.edges[edgeId]
-			inputs[input] = getInput(context, source, schema)
+			inputs[input] = getInput(context, source, schema, instance)
 		}
 
 		// TS doesn't know that node.kind and node.state are coordinated,
 		// or else this would typecheck without coersion
 		const evaluate = runtimes[node.kind] as Evaluate<any, Schemas, Schemas>
 
-		const result = await evaluate(node.state, inputs, context).then(
-			(result) => right(result),
-			(err) => left(makeNodeError(nodeId, err.toString()))
-		)
+		const result = await evaluate(node.state, inputs, context)
+			.then((result) => right(result))
+			.catch((err) => left(makeNodeError(nodeId, err.toString())))
 
 		if (isLeft(result)) {
 			return yield makeFailureEvent(result.left)
@@ -103,6 +104,7 @@ export default async function* evaluate(
 
 			for (const edgeId of node.outputs[output]) {
 				schemas[edgeId] = schema
+				instances[edgeId] = instance
 			}
 
 			await putOutput(context, { id: nodeId, output }, schema, instance)
@@ -117,13 +119,14 @@ export default async function* evaluate(
 function getInput<S extends Schema.Schema>(
 	context: Context,
 	source: Source,
-	schema: S
+	schema: S,
+	instance: Instance.Instance<S>
 ): EvaluateInput<S> {
 	return {
 		schemaURI: getSchemaURI(context, source),
 		instanceURI: getInstanceURI(context, source),
 		source,
 		schema,
-		getInstance: () => getOutput(context, source, schema),
+		instance,
 	}
 }

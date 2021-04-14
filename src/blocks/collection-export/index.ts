@@ -1,10 +1,4 @@
-import { createHash } from "crypto"
-
 import fetch from "node-fetch"
-import StatusCodes from "http-status-codes"
-
-import { encode } from "@underlay/apg-format-binary"
-import schemaSchema, { fromSchema } from "@underlay/apg-schema-schema"
 
 import type {
 	State,
@@ -12,7 +6,7 @@ import type {
 	Outputs,
 } from "@underlay/pipeline/collection-export"
 
-import type { Evaluate } from "../../types.js"
+import type { Evaluate } from "../../types"
 
 const evaluate: Evaluate<State, Inputs, Outputs> = async (
 	{ etag, id, readme },
@@ -42,7 +36,7 @@ const evaluate: Evaluate<State, Inputs, Outputs> = async (
 		return {}
 	} else {
 		throw new Error(
-			`Publishing collection failed with status code ${res.status}`
+			`Publishing collection failed.\nStatus code: ${res.status}\n`
 		)
 	}
 }

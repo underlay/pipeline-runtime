@@ -10,9 +10,9 @@ import { encodeLiteral, decodeLiteral } from "@underlay/apg-format-binary"
 
 import block, { State, Inputs, Outputs } from "@underlay/pipeline/csv-import"
 
-import { Evaluate } from "../../types.js"
+import type { Evaluate } from "../../types"
 
-import { resolveURI } from "../../utils.js"
+import { resolveURI } from "../../utils"
 
 const unit = Instance.unit(Schema.unit())
 
@@ -53,6 +53,7 @@ const evaluate: Evaluate<State, Inputs, Outputs> = async (state, {}) => {
 		let skip = state.header
 
 		const config = { skipEmptyLines: false, header: false }
+
 		const stream = Papa.parse(Papa.NODE_STREAM_INPUT, config)
 
 		stream.on("data", (row: string[]) => {

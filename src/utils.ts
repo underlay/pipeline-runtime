@@ -1,5 +1,3 @@
-import { readFileSync, writeFileSync } from "fs"
-import { resolve } from "path"
 import { Readable } from "stream"
 
 import fetch from "node-fetch"
@@ -7,22 +5,18 @@ import fetch from "node-fetch"
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"
 
 import { Instance, Schema } from "@underlay/apg"
-import { decode, encode } from "@underlay/apg-format-binary"
+import { encode } from "@underlay/apg-format-binary"
 import schemaSchema, { fromSchema } from "@underlay/apg-schema-schema"
 
-import type { Source, Context } from "./types.js"
+import type { Source, Context } from "./types"
 
-import { S3, bucket } from "./s3.js"
+import { S3, bucket } from "./s3"
 
-const getSchemaName = ({ id, output }: Source) => `${id}.${output}.schema`
+const getSchemaKey = ({ key }: Context, { id, output }: Source) =>
+	`executions/${key}/${id}.${output}.schema`
 
-const getSchemaKey = ({ key }: Context, source: Source) =>
-	`executions/${key}/${getSchemaName(source)}`
-
-const getInstanceName = ({ id, output }: Source) => `${id}.${output}.instance`
-
-const getInstanceKey = ({ key }: Context, source: Source) =>
-	`executions/${key}/${getInstanceName(source)}`
+const getInstanceKey = ({ key }: Context, { id, output }: Source) =>
+	`executions/${key}/${id}.${output}.instance`
 
 export const getSchemaURI = (context: Context, source: Source) =>
 	`s3://${bucket}/${getSchemaKey(context, source)}`
@@ -47,9 +41,6 @@ export async function putOutput<S extends Schema.Schema>(
 
 	const instanceData = encode(schema, instance)
 
-	const path = resolve(context.directory, getInstanceName(source))
-	writeFileSync(path, instanceData)
-
 	const instanceKey = getInstanceKey(context, source)
 	const command = new PutObjectCommand({
 		Bucket: bucket,
@@ -58,16 +49,6 @@ export async function putOutput<S extends Schema.Schema>(
 	})
 
 	await S3.send(command)
-}
-
-export async function getOutput<S extends Schema.Schema>(
-	{ directory }: Context,
-	source: Source,
-	schema: S
-): Promise<Instance.Instance<S>> {
-	const path = resolve(directory, getInstanceName(source))
-	const data = readFileSync(path)
-	return decode<S>(schema, data)
 }
 
 interface Handler {

@@ -1,10 +1,9 @@
-// Type-only import
-import { Blocks } from "@underlay/pipeline"
+import type { Blocks } from "@underlay/pipeline"
 
-import { Evaluate } from "../types.js"
+import type { Evaluate } from "../types"
 
-import CsvImport from "./csv-import/index.js"
-import CollectionExport from "./collection-export/index.js"
+import CsvImport from "./csv-import"
+import CollectionExport from "./collection-export"
 
 export type Runtimes = {
 	[k in keyof Blocks]: Evaluate<
