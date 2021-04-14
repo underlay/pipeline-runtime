@@ -12,7 +12,7 @@ import block, { State, Inputs, Outputs } from "@underlay/pipeline/csv-import"
 
 import type { Evaluate } from "../../types"
 
-import { resolveURI } from "../../utils"
+import { resolveText } from "../../utils"
 
 const unit = Instance.unit(Schema.unit())
 
@@ -37,77 +37,67 @@ const evaluate: Evaluate<State, Inputs, Outputs> = async (state, {}) => {
 	const {
 		output: { schema },
 	} = await block.validate(state, {})
-	return new Promise(async (resolve, reject) => {
-		if (state.uri === null) {
-			throw new Error("No file")
-		} else {
-			const {} = new URL(state.key)
-		}
 
-		const product = schema[state.key]
-		if (product === undefined) {
-			throw new Error("Invalid class key")
-		}
+	if (state.uri === null) {
+		throw new Error("No file")
+	} else {
+		const {} = new URL(state.key)
+	}
 
-		const values: Instance.Value<Outputs["output"][string]>[] = []
-		let skip = state.header
+	const product = schema[state.key]
+	if (product === undefined) {
+		throw new Error("Invalid class key")
+	}
 
-		const config = { skipEmptyLines: false, header: false }
+	const values: Instance.Value<Outputs["output"][string]>[] = []
 
-		const stream = Papa.parse(Papa.NODE_STREAM_INPUT, config)
+	const config = { skipEmptyLines: false, header: false }
 
-		stream.on("data", (row: string[]) => {
-			if (row.length !== state.columns.length) {
-				stream.end()
-				throw new Error("Bad row length")
-			} else if (skip) {
-				skip = false
-				return
+	const input = await resolveText(state.uri)
+
+	const result = Papa.parse<string[]>(input, config)
+
+	if (result.errors.length > 0) {
+		const message = result.errors
+			.map((error) => `${error.type} in row ${error.row}: ${error.message}`)
+			.join("\n")
+		throw new Error(message)
+	}
+
+	const rows = state.header ? result.data.slice(1) : result.data
+	for (const row of rows) {
+		const components: Record<string, Instance.Value<OptionalProperty>> = {}
+		for (const [value, column] of zip(row, state.columns)) {
+			if (column === null) {
+				continue
 			}
 
-			const components: Record<string, Instance.Value<OptionalProperty>> = {}
-			for (const [value, column] of zip(row, state.columns)) {
-				if (column === null) {
-					continue
-				}
-
-				const { key, nullValue } = column
-				const property = product.components[key]
-				if (property.kind === "coproduct") {
-					if (value === nullValue) {
-						const none = Instance.coproduct(property, ul.none, unit)
-						components[key] = none
-					} else {
-						const type = property.options[ul.some]
-						components[key] = Instance.coproduct(
-							property,
-							ul.some,
-							parseProperty(type, value)
-						)
-					}
+			const { key, nullValue } = column
+			const property = product.components[key]
+			if (property.kind === "coproduct") {
+				if (value === nullValue) {
+					const none = Instance.coproduct(property, ul.none, unit)
+					components[key] = none
 				} else {
-					try {
-						components[key] = parseProperty(property, value)
-					} catch (e) {
-						stream.end()
-						throw e
-					}
+					const type = property.options[ul.some]
+					components[key] = Instance.coproduct(
+						property,
+						ul.some,
+						parseProperty(type, value)
+					)
 				}
+			} else {
+				components[key] = parseProperty(property, value)
 			}
-			values.push(
-				Instance.product<Record<string, OptionalProperty>>(product, components)
-			)
-		})
+		}
+		values.push(
+			Instance.product<Record<string, OptionalProperty>>(product, components)
+		)
+	}
 
-		stream.on("end", () => {
-			const instance = Instance.instance(schema, { [state.key]: values })
-			resolve({ output: { schema, instance } })
-		})
+	const instance = Instance.instance(schema, { [state.key]: values })
 
-		stream.on("error", (error) => reject(error))
-
-		resolveURI(state.uri).then((res) => res.pipe(stream))
-	})
+	return { output: { schema, instance } }
 }
 
 export default evaluate

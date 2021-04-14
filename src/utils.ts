@@ -92,3 +92,16 @@ export async function resolveURI(uri: string): Promise<NodeJS.ReadableStream> {
 
 	throw new Error("No URI matching handlers found")
 }
+
+export async function resolveText(uri: string): Promise<string> {
+	const stream = await resolveURI(uri)
+	let result = ""
+	for await (const chunk of stream) {
+		if (Buffer.isBuffer(chunk)) {
+			result += chunk.toString("utf-8")
+		} else {
+			result += chunk
+		}
+	}
+	return result
+}
