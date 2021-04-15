@@ -2,8 +2,8 @@ import type { Blocks } from "@underlay/pipeline"
 
 import type { Evaluate } from "../types"
 
-import CsvImport from "./csv-import"
-import CollectionExport from "./collection-export"
+import CsvImport from "./csv-import/index.js"
+import CollectionExport from "./collection-export/index.js"
 
 export type Runtimes = {
 	[k in keyof Blocks]: Evaluate<

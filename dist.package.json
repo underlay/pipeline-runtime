@@ -1,0 +1,14 @@
+{
+	"name": "@underlay/pipeline-runtime",
+	"main": "./index.js",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/underlay/pipeline-runtime.git"
+	},
+	"author": "Joel Gustafson",
+	"license": "GPL-3.0",
+	"bugs": {
+		"url": "https://github.com/underlay/pipeline-runtime/issues"
+	},
+	"homepage": "https://github.com/underlay/pipeline-runtime#readme"
+}

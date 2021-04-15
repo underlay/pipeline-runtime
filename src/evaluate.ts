@@ -19,11 +19,11 @@ import {
 	EvaluateEvent,
 } from "@underlay/pipeline"
 
-import type { Evaluate, Context, EvaluateInput, Source } from "./types"
+import type { Evaluate, Context, EvaluateInput, Source } from "./types.js"
 
-import { runtimes } from "./blocks"
+import { runtimes } from "./blocks/index.js"
 
-import { getInstanceURI, getSchemaURI, putOutput } from "./utils"
+import { getInstanceURI, getSchemaURI, putOutput } from "./utils.js"
 
 export default async function* evaluate(
 	context: Context,

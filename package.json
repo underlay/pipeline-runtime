@@ -1,10 +1,11 @@
 {
 	"name": "@underlay/pipeline-runtime",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "",
+	"type": "module",
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
-		"build": "webpack --mode production",
+		"build": "webpack --mode production && cp dist.package.json dist/package.json",
 		"zip": "zip pipeline-runtime.zip dist/index.js"
 	},
 	"repository": {
@@ -19,14 +20,15 @@
 	"homepage": "https://github.com/underlay/pipeline-runtime#readme",
 	"devDependencies": {
 		"@babel/core": "^7.13.15",
+		"@babel/preset-env": "^7.13.15",
 		"@types/node-fetch": "^2.5.10",
 		"@types/papaparse": "^5.2.5",
 		"@underlay/apg": "^1.2.6",
+		"babel-loader": "^8.2.2",
 		"dotenv": "^8.2.0",
 		"fp-ts": "^2.10.0",
 		"io-ts": "^2.2.16",
 		"node-inspect-extracted": "^1.0.5",
-		"ts-loader": "^8.1.0",
 		"typescript": "^4.2.4",
 		"webpack": "^5.33.2",
 		"webpack-cli": "^4.6.0"

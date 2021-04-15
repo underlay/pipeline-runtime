@@ -10,9 +10,9 @@ import { encodeLiteral, decodeLiteral } from "@underlay/apg-format-binary"
 
 import block, { State, Inputs, Outputs } from "@underlay/pipeline/csv-import"
 
-import type { Evaluate } from "../../types"
+import type { Evaluate } from "../../types.js"
 
-import { resolveText } from "../../utils"
+import { resolveText } from "../../utils.js"
 
 const unit = Instance.unit(Schema.unit())
 
@@ -65,7 +65,14 @@ const evaluate: Evaluate<State, Inputs, Outputs> = async (state, {}) => {
 	}
 
 	const rows = state.header ? result.data.slice(1) : result.data
+
 	for (const row of rows) {
+		if (row.length !== state.columns.length) {
+			throw new Error(
+				`Inconsistent row length: expected ${state.columns.length}, got ${row.length}`
+			)
+		}
+
 		const components: Record<string, Instance.Value<OptionalProperty>> = {}
 		for (const [value, column] of zip(row, state.columns)) {
 			if (column === null) {

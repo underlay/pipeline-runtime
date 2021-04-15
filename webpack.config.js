@@ -1,23 +1,21 @@
-const path = require("path")
+import { resolve } from "path"
 
-module.exports = {
-	entry: path.resolve(__dirname, "src", "index.ts"),
+export default {
+	entry: resolve("lib", "index.js"),
 	output: {
 		filename: "index.js",
 		library: { type: "commonjs" },
 	},
-	resolve: { extensions: [".js", ".ts"] },
+	resolve: { extensions: [".js"] },
 
 	target: "node",
 	module: {
 		rules: [
-			{ test: /\.ts$/, loader: "ts-loader" },
-			// {
-			// 	test: /\.js$/,
-			// 	exclude: /(node_modules)\//,
-			// 	loader: "babel-loader",
-			// 	options: { presets: ["@babel/preset-env"] },
-			// },
+			{
+				test: /\.js$/,
+				exclude: /(node_modules)\//,
+				loader: "babel-loader",
+			},
 		],
 	},
 }

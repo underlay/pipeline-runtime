@@ -10,7 +10,7 @@ import {
 	makeStartEvent,
 } from "@underlay/pipeline"
 
-import evaluate from "./evaluate"
+import evaluate from "./evaluate.js"
 
 const evaluateEvent = t.type({
 	host: t.string,

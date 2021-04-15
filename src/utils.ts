@@ -8,9 +8,9 @@ import { Instance, Schema } from "@underlay/apg"
 import { encode } from "@underlay/apg-format-binary"
 import schemaSchema, { fromSchema } from "@underlay/apg-schema-schema"
 
-import type { Source, Context } from "./types"
+import type { Source, Context } from "./types.js"
 
-import { S3, bucket } from "./s3"
+import { S3, bucket } from "./s3.js"
 
 const getSchemaKey = ({ key }: Context, { id, output }: Source) =>
 	`executions/${key}/${id}.${output}.schema`

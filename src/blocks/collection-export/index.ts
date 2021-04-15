@@ -6,7 +6,7 @@ import type {
 	Outputs,
 } from "@underlay/pipeline/collection-export"
 
-import type { Evaluate } from "../../types"
+import type { Evaluate } from "../../types.js"
 
 const evaluate: Evaluate<State, Inputs, Outputs> = async (
 	{ etag, id, readme },
